@@ -15,7 +15,7 @@ Additional features:
 - **Retesting** (`--retest X`): Query the LLM multiple times and average the results for reliability analysis (mean for probabilities, mode for rankings, semantic consensus + mean embedding for functions)
 
 All cloud-based LLM queries are routed through [OpenRouter](https://openrouter.ai/), giving you access to hundreds of models (OpenAI, Anthropic, Google, Meta, Mistral, etc.) with a single API key. The framework also supports:
-- **BrainGPT**: A local neuroscience-specialised model (Llama-2 + LoRA adapter)
+- **Local LLMs**: local LLMs can be used, for example using MLX for Apple Silicon (may require quantization)
 - **Dummy**: A mock model for testing without API usage
 
 ## Installation
