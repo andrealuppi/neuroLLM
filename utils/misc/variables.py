@@ -108,21 +108,47 @@ JUSTIFY_OUTPUT_FORMATS = {
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-BRAINGPT_CONFIG = {
-    "base_model_id": "meta-llama/Llama-2-7b-chat-hf",
-    "adapter_id": "BrainGPT/BrainGPT-7B-v0.1",
-}
+#BRAINGPT_CONFIG = {
+#    "base_model_id": "meta-llama/Llama-2-7b-chat-hf",
+#    "adapter_id": "BrainGPT/BrainGPT-7B-v0.1",
+#}
 
-LOCAL_MODELS = {"braingpt", "dummy"}
+LOCAL_MODEL_PREFIX = "local/"
+
+#LOCAL_MODEL_REGISTRY = {
+#    "local/medgemma": {
+#        "backend": "mlx",
+#        "path": "mlx-community/medgemma-4b-it-4bit",
+#    },
+#    "local/braingpt": {
+#        "backend": "braingpt",
+#    },
+#}
+
+#LOCAL_MODELS = set(LOCAL_MODEL_REGISTRY.keys()) | {"dummy"}
+
+import json
+from pathlib import Path
+
+LOCAL_MODEL_CONFIG_PATH = Path("config/local_models.json")
+
+if LOCAL_MODEL_CONFIG_PATH.exists():
+    with open(LOCAL_MODEL_CONFIG_PATH, "r") as f:
+        LOCAL_MODEL_REGISTRY = json.load(f)
+else:
+    LOCAL_MODEL_REGISTRY = {}
+
+LOCAL_MODELS = set(LOCAL_MODEL_REGISTRY.keys()) | {"dummy"}
 
 EMBEDDING_DIMS = {"openai": 3072, "local": 1024}
 
 DEFAULT_FUNCTIONS = [
-    "spatial cognition",
-    "rationality",
-    "creativity",
-    "metacognition",
-    "consciousness",
-    "anaesthesia",
-    "coma",
+    "cognitive control",
+    "emotion",
+    "language",
+    "listening",
+    "manipulation",
+    "memory",
+    "reward",
+    "vision",
 ]

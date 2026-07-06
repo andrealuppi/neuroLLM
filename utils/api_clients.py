@@ -16,7 +16,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from utils.misc.logging_setup import logger
 from utils.misc.variables import (
     OPENROUTER_BASE_URL,
-    BRAINGPT_CONFIG,
+    LOCAL_MODEL_REGISTRY,
     LOCAL_MODELS,
     EMBEDDING_DIMS,
 )
@@ -51,50 +51,77 @@ class APIClientManager:
         self.model_names: List[str] = [m.strip() for m in models.split(",")]
         self.embedding_provider = embedding_provider
         self.max_tokens = max_tokens
+        self.active_local_model_name = None
 
         try:
-            if any(m not in LOCAL_MODELS for m in self.model_names):
+            if any(not m.startswith("local/") and m != "dummy" for m in self.model_names):
                 self._init_openrouter()
 
+    
             if embedding_provider == "openai":
                 self._init_openai_embeddings()
             elif embedding_provider == "local":
                 self._init_local_embeddings()
 
-            if "braingpt" in self.model_names:
-                self._validate_braingpt_access()
-                self._init_braingpt()
 
         except Exception as e:
             logger.error_status(
                 f"Failed to initialize clients: {str(e)}", exc_info=True
             )
             raise
+            
+    def _ensure_local_model_loaded(self, model_name: str):
+        import gc
+        from utils.misc.variables import LOCAL_MODEL_REGISTRY
 
+        if model_name not in LOCAL_MODEL_REGISTRY:
+            raise ValueError(f"Unknown local model: {model_name}")
+
+        if self.active_local_model_name == model_name and model_name in self.clients:
+            return
+
+        if self.active_local_model_name and self.active_local_model_name in self.clients:
+            del self.clients[self.active_local_model_name]
+            self.active_local_model_name = None
+            gc.collect()
+
+        spec = LOCAL_MODEL_REGISTRY[model_name]
+        backend = spec["backend"]
+
+        if backend == "mlx":
+            from mlx_lm import load
+            from mlx_lm.models.cache import make_prompt_cache
+
+            model, tokenizer = load(spec["path"])
+
+            self.clients[model_name] = {
+                "backend": "mlx",
+                "model": model,
+                "tokenizer": tokenizer,
+            }
+
+
+        else:
+            raise ValueError(f"Unsupported local backend: {backend}")
+
+        self.active_local_model_name = model_name
+    
+    
+    
     def query_model(
         self,
         model_name: str,
         prompt: str,
         temperature: float = None,
     ) -> str:
-        """
-        Query a model by name
-
-        Args:
-            * model_name (str): OpenRouter model ID,
-                'braingpt', or 'dummy'
-            * prompt (str): Prompt to send to the model
-            * temperature (float | None): Override temperature.
-                None uses default (0 for deterministic).
-
-        Returns:
-            * response (str): Model response
-        """
         try:
             if model_name == "dummy":
                 return self._query_dummy(prompt=prompt)
-            elif model_name == "braingpt":
-                return self._query_braingpt(prompt=prompt)
+
+            elif model_name.startswith("local/"):
+                self._ensure_local_model_loaded(model_name)
+                return self._query_local(model_name=model_name, prompt=prompt)
+
             else:
                 return self.retry_with_backoff(
                     self._query_openrouter,
@@ -103,11 +130,73 @@ class APIClientManager:
                     temperature,
                 )
         except Exception as e:
-            error_msg = (
-                f"Error querying {model_name}: {str(e)}"
-            )
+            error_msg = f"Error querying {model_name}: {str(e)}"
             logger.error_status(error_msg, exc_info=True)
             raise
+        
+
+    def _query_local(self, model_name: str, prompt: str) -> str:
+        obj = self.clients[model_name]
+        backend = obj["backend"]
+
+        if backend == "mlx":
+            from mlx_lm import stream_generate
+
+            model = obj["model"]
+            tokenizer = obj["tokenizer"]
+#            cache = obj["cache"]
+
+            messages = [{"role": "user", "content": prompt}]
+
+            formatted = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True
+            )
+
+            full = ""
+
+            for r in stream_generate(
+                model,
+                tokenizer,
+                formatted,
+                max_tokens=self.max_tokens,
+#                prompt_cache=cache
+            ):
+                text = r.text
+                if any(s in text for s in [
+                    "</s>",
+                    "<|eot_id|>",
+                    "<|start_header_id|>",
+                    "<|end_header_id|>"
+                ]):
+                    break
+                full += text
+
+            return full.strip()
+
+        elif backend == "braingpt":
+            model = obj["model"]
+            tokenizer = obj["tokenizer"]
+
+            inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=self.max_tokens,
+                    max_length=None,
+                    do_sample=False,
+                )
+
+            token_start = inputs["input_ids"].shape[1]
+            response = tokenizer.decode(
+                outputs[0][token_start:],
+                skip_special_tokens=True,
+            )
+            return response.strip()
+
+        raise ValueError(f"Unsupported backend: {backend}")
 
     def retry_with_backoff(
         self,
@@ -232,38 +321,6 @@ class APIClientManager:
             )
         logger.info("BrainGPT: HF access verified")
 
-    def _init_braingpt(self):
-        """
-        Load BrainGPT model and tokenizer (Llama-2 base + LoRA adapter)
-        Stores them in self.clients["braingpt"] as a dict
-        """
-        # Get HF token, as well as model IDs from config
-        hf_token = os.environ.get("HF_TOKEN")
-        base_model_id = BRAINGPT_CONFIG["base_model_id"]
-        adapter_id = BRAINGPT_CONFIG["adapter_id"]
-
-        # Load base model, then apply LoRA adapter. Use 16-bit precision and
-        # auto device mapping for efficiency
-        model = AutoModelForCausalLM.from_pretrained(
-            base_model_id,
-            torch_dtype=torch.float16,
-            device_map="mps",
-            token=hf_token,
-        )
-        model = PeftModel.from_pretrained(model, adapter_id)
-        model.eval()
-
-        # Load tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(
-            base_model_id, token=hf_token
-        )
-
-        # Store in clients dict
-        self.clients["braingpt"] = {
-            "model": model,
-            "tokenizer": tokenizer,
-        }
-        logger.info("Initialized BrainGPT model")
 
     # -------------------------------------------------------------------------
     # Query helpers
@@ -356,40 +413,6 @@ class APIClientManager:
                 "This is a dummy response for testing"
             )
 
-    def _query_braingpt(self, prompt: str) -> str:
-        """
-        Query BrainGPT (Llama-2 + LoRA adapter) locally
-
-        Args:
-            * prompt (str): Prompt to send to the model
-
-        Returns:
-            * response (str): Model response
-        """
-
-        # Get model and tokenizer from clients dict
-        model = self.clients["braingpt"]["model"]
-        tokenizer = self.clients["braingpt"]["tokenizer"]
-
-        # Tokenize prompt and move to model device
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-
-        # Generate responses
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=self.max_tokens,
-                max_length=None,
-                do_sample=False,
-            )
-
-        # Decode only the newly generated tokens (skip the prompt tokens)
-        token_start = inputs["input_ids"].shape[1]
-        response = tokenizer.decode(
-            outputs[0][token_start:],
-            skip_special_tokens=True,
-        )
-        return response.strip()
 
     # -------------------------------------------------------------------------
     # Embedding helpers

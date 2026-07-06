@@ -132,37 +132,117 @@ class BrainAnalyser:
         )
         return success_count
 
+#    def _process_pairs(self) -> int:
+#        """Process all pairs in parallel"""
+#        logger.info(
+#            f"Running in parallel ({self.config.workers} workers)"
+#        )
+#        hemispheres = (
+#            ["left", "right"]
+#            if self.config.separate_hemispheres
+#            else [None]
+#        )
+#
+#        with ThreadPoolExecutor(
+#            max_workers=self.config.workers
+#        ) as executor:
+#            future_to_task = {}
+#            for pair, function, hemisphere, model in product(
+#                self.config.pairs,
+#                self.config.functions,
+#                hemispheres,
+#                self.config.models,
+#            ):
+#                future = executor.submit(
+#                    run_ranking_task,
+#                    config=self.config,
+#                    region_1=pair[0],
+#                    region_2=pair[1],
+#                    function=function,
+#                    model=model,
+#                    hemisphere=hemisphere,
+#                )
+#                future_to_task[future] = (pair, function, model)
+#
+#            success_count = 0
+#            for future in as_completed(future_to_task):
+#                task = future_to_task[future]
+#                try:
+#                    future.result()
+#                    success_count += 1
+#                except Exception as e:
+#                    logger.error_status(f"Failed {task}: {e}")
+#
+#        total = (
+#            len(self.config.pairs)
+#            * len(self.config.functions)
+#            * len(hemispheres)
+#            * len(self.config.models)
+#        )
+#        logger.info(f"Completed {success_count}/{total} tasks")
+#        return len(self.config.pairs) if success_count == total else 0
+
     def _process_pairs(self) -> int:
         """Process all pairs in parallel"""
         logger.info(
             f"Running in parallel ({self.config.workers} workers)"
         )
-        hemispheres = (
-            ["left", "right"]
-            if self.config.separate_hemispheres
-            else [None]
-        )
+        
+        # 1. Generate hemisphere combinations without redundant L-R / R-L swaps
+        if self.config.separate_hemispheres:
+            hemisphere_pairs = [
+                ("left", "left"),
+                ("right", "right"),
+                ("left", "right")  # Covers interhemispheric without duplicating
+            ]
+        else:
+            hemisphere_pairs = [(None, None)]
+
+        # Extract unique regions to create homologous pairs (e.g., thalamus vs thalamus)
+        unique_regions = list(set([r for pair in self.config.pairs for r in pair]))
+        homologous_pairs = [(r, r) for r in unique_regions]
 
         with ThreadPoolExecutor(
             max_workers=self.config.workers
         ) as executor:
             future_to_task = {}
-            for pair, function, hemisphere, model in product(
-                self.config.pairs,
-                self.config.functions,
-                hemispheres,
-                self.config.models,
-            ):
-                future = executor.submit(
-                    run_ranking_task,
-                    config=self.config,
-                    region_1=pair[0],
-                    region_2=pair[1],
-                    function=function,
-                    model=model,
-                    hemisphere=hemisphere,
-                )
-                future_to_task[future] = (pair, function, model)
+            
+            # Expand itertools.product into explicit loops to inject homologous pairs dynamically
+            for function in self.config.functions:
+                for model in self.config.models:
+                    for hem1, hem2 in hemisphere_pairs:
+                        
+                        # 2. Determine output category for path routing
+                        if hem1 == hem2 and hem1 is not None:
+                            output_category = hem1
+                        elif hem1 != hem2:
+                            output_category = "interhemispheric"
+                        else:
+                            output_category = None
+
+                        # 3. Determine pairs based on hemisphere category
+                        if output_category == "interhemispheric":
+                            # Order matters for interhemispheric, so we need every possible permutation,
+                            # including homologous pairs (A vs A) and reversed pairs (B vs A)
+                            current_pairs = [(r1, r2) for r1 in unique_regions for r2 in unique_regions]
+                        else:
+                            # Standard intra-hemispheric comparisons (A vs B)
+                            current_pairs = list(self.config.pairs)
+
+                        # 4. Submit with new parameters
+                        for pair in current_pairs:
+                            future = executor.submit(
+                                run_ranking_task,
+                                config=self.config,
+                                region_1=pair[0],
+                                region_2=pair[1],
+                                function=function,
+                                model=model,
+                                hemisphere_1=hem1,
+                                hemisphere_2=hem2,
+                                output_category=output_category
+                            )
+                            future_to_task[future] = (pair, function, model)
 
             success_count = 0
             for future in as_completed(future_to_task):
@@ -173,15 +253,13 @@ class BrainAnalyser:
                 except Exception as e:
                     logger.error_status(f"Failed {task}: {e}")
 
-        total = (
-            len(self.config.pairs)
-            * len(self.config.functions)
-            * len(hemispheres)
-            * len(self.config.models)
-        )
+        # Update total calculation since the number of pairs now varies by hemisphere category
+        total = len(future_to_task)
         logger.info(f"Completed {success_count}/{total} tasks")
+        
         return len(self.config.pairs) if success_count == total else 0
-
+        
+        
     def _process_single_region(
         self, region: str, analysis_type: str
     ) -> None:

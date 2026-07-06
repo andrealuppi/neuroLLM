@@ -106,6 +106,92 @@ def _apply_justify(prompt: str, prompt_type: str) -> str:
     return prompt
 
 
+#def generate_prompt(
+#    prompt_type: str,
+#    region_name: str,
+#    species: str,
+#    atlas_name: str,
+#    hemisphere: str = None,
+#    function: str = None,
+#    region_1: str = None,
+#    region_2: str = None,
+#    justify: bool = False,
+#    template_name: str = "default",
+#    save_to_results: bool = False,
+#) -> str:
+#    """
+#    Generate analysis prompt for functions, probabilities, or rankings
+#
+#    Args:
+#        * prompt_type: "top-functions", "query-functions", or "rankings"
+#        * species: Target species
+#        * region_name: Brain region name
+#        * hemisphere: Hemisphere ("left"/"right"/None)
+#        * function: Function name (for probability/ranking prompts)
+#        * region_1: First region (for ranking prompts)
+#        * region_2: Second region (for ranking prompts)
+#        * justify: Whether to include justification request
+#        * template_name: Template name to use
+#        * atlas_name: Atlas name (for saving)
+#        * save_to_results: Whether to save prompt
+#
+#    Returns:
+#        * Generated prompt string
+#    """
+#    # Load template
+#    template = load_custom_template(
+#        prompt_type=prompt_type, template_name=template_name
+#    )
+#
+#    # Prepare variables for formatting
+#    format_vars = {
+#        "species": species,
+#        "region": region_name,
+#    }
+#
+#    # Handle hemisphere part
+#    format_vars["hemisphere_part"] = (
+#        f"in the **{hemisphere} hemisphere** of the"
+#        if hemisphere
+#        else "in the"
+#    )
+#
+#    # Add function for probability and ranking prompts
+#    if prompt_type in ("query-functions", "rankings"):
+#        assert function, f"Function must be provided for {prompt_type} prompts"
+#        format_vars["function"] = function
+#
+#    # Add region pair for ranking prompts
+#    if prompt_type == "rankings":
+#        assert region_1 and region_2, (
+#            "region_1 and region_2 must be provided for ranking prompts"
+#        )
+#        format_vars["region_1"] = region_1
+#        format_vars["region_2"] = region_2
+#
+#    # Format template with all replacements at once
+#    prompt = template.format(**format_vars)
+#
+#    # Apply justify modifications if requested
+#    if justify:
+#        prompt = _apply_justify(prompt=prompt, prompt_type=prompt_type)
+#
+#    # Save if requested
+#    if save_to_results:
+#        save_generated_prompt(
+#            prompt=prompt,
+#            prompt_type=prompt_type,
+#            species=species,
+#            region=region_name,
+#            hemisphere=hemisphere,
+#            atlas_name=atlas_name,
+#            template_name=template_name,
+#            function=function,
+#        )
+#
+#    return prompt
+#
+
 def generate_prompt(
     prompt_type: str,
     region_name: str,
@@ -115,6 +201,8 @@ def generate_prompt(
     function: str = None,
     region_1: str = None,
     region_2: str = None,
+    hemisphere_1: str = None,
+    hemisphere_2: str = None,
     justify: bool = False,
     template_name: str = "default",
     save_to_results: bool = False,
@@ -126,10 +214,12 @@ def generate_prompt(
         * prompt_type: "top-functions", "query-functions", or "rankings"
         * species: Target species
         * region_name: Brain region name
-        * hemisphere: Hemisphere ("left"/"right"/None)
+        * hemisphere: Hemisphere ("left"/"right"/None/"interhemispheric")
         * function: Function name (for probability/ranking prompts)
         * region_1: First region (for ranking prompts)
         * region_2: Second region (for ranking prompts)
+        * hemisphere_1: Hemisphere of first region (for ranking prompts)
+        * hemisphere_2: Hemisphere of second region (for ranking prompts)
         * justify: Whether to include justification request
         * template_name: Template name to use
         * atlas_name: Atlas name (for saving)
@@ -149,10 +239,11 @@ def generate_prompt(
         "region": region_name,
     }
 
-    # Handle hemisphere part
+    # Handle hemisphere part gracefully so "interhemispheric" doesn't sound weird
+    # if you ever use {hemisphere_part} in a template again.
     format_vars["hemisphere_part"] = (
         f"in the **{hemisphere} hemisphere** of the"
-        if hemisphere
+        if hemisphere and hemisphere != "interhemispheric"
         else "in the"
     )
 
@@ -161,13 +252,17 @@ def generate_prompt(
         assert function, f"Function must be provided for {prompt_type} prompts"
         format_vars["function"] = function
 
-    # Add region pair for ranking prompts
+    # Add region pair for ranking prompts (ISOLATED FIX)
     if prompt_type == "rankings":
         assert region_1 and region_2, (
             "region_1 and region_2 must be provided for ranking prompts"
         )
         format_vars["region_1"] = region_1
         format_vars["region_2"] = region_2
+        
+        # Inject hemisphere labels so the template doesn't throw a KeyError
+        format_vars["hemisphere_1"] = hemisphere_1 if hemisphere_1 else "Not specified"
+        format_vars["hemisphere_2"] = hemisphere_2 if hemisphere_2 else "Not specified"
 
     # Format template with all replacements at once
     prompt = template.format(**format_vars)
@@ -190,8 +285,7 @@ def generate_prompt(
         )
 
     return prompt
-
-
+    
 def save_generated_prompt(
     prompt: str,
     prompt_type: str,

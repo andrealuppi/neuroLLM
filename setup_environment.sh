@@ -56,9 +56,9 @@ if [ ! -f .env ]; then
 # API Keys for LLM Brain Analysis
 # Replace the placeholder values with your actual API keys
 
-OPENROUTER_API_KEY=your-openrouter-key-here
-OPENAI_API_KEY=your-openai-key-here           # Only needed for top-functions (embeddings)
-HF_TOKEN=your-huggingface-token-here          # Only needed for BrainGPT
+OPENROUTER_API_KEY="my-token"
+OPENAI_API_KEY="my-token"           # Only needed for top-functions (embeddings)
+HF_TOKEN="my-token"          # Only needed for BrainGPT
 EOF
     echo "Created .env template"
 else
@@ -153,3 +153,4 @@ echo ""
 echo "For more options, see:"
 echo "    python main.py --help"
 echo ""
+

@@ -20,11 +20,20 @@ def _iter_model_hemispheres(config, analysis_type, with_embeddings=False):
         * analysis_type: Analysis type string
         * with_embeddings: If True, also construct EmbeddingsPathConstructor
     """
-    hemispheres = (
-        ["left", "right"]
-        if config.separate_hemispheres
-        else [None]
-    )
+#    hemispheres = (
+#        ["left", "right"]
+#        if config.separate_hemispheres
+#        else [None]
+#    )
+
+    if config.separate_hemispheres:
+        hemispheres = ["left", "right"]
+        # Only include the interhemispheric folder for pairwise analyses
+        if analysis_type == "rankings":
+            hemispheres.append("interhemispheric")
+    else:
+        hemispheres = [None]
+        
     for hemisphere in hemispheres:
         for model in config.models:
             common = dict(
@@ -231,27 +240,154 @@ def aggregate_probability_results(
                 )
 
 
+#def aggregate_ranking_results(
+#    config: Dict[str, Any], analysis_type: str = "rankings"
+#):
+#    """
+#    Ranking aggregation. Creates one CSV per pair showing
+#    which region won for each function.
+#
+#    Output per pair:
+#    - {region1}_vs_{region2}/results.csv
+#      Columns: Function, Winner, Ranking
+#
+#    Args:
+#        * config: Analysis configuration
+#        * analysis_type: "rankings"
+#    """
+#    for model, _, query, agg, _ in _iter_model_hemispheres(
+#        config, analysis_type,
+#    ):
+#        for r1, r2 in config.pairs:
+#            rows = []
+#            for function in config.functions:
+#                path = query.construct_query_pair_path(
+#                    region_1=r1, region_2=r2,
+#                    trial="final",
+#                )
+#                if not os.path.exists(path):
+#                    continue
+#
+#                with open(path) as f:
+#                    data = json.load(f)
+#
+#                ranking = (
+#                    data.get(function, {}).get(model)
+#                )
+#                if ranking is None:
+#                    continue
+#
+#                winner = r1 if ranking == 1 else r2
+#                rows.append({
+#                    "Function": function,
+#                    "Winner": winner,
+#                })
+#
+#            if not rows:
+#                continue
+#
+#            df = pd.DataFrame(rows).set_index("Function")
+#            agg_path = agg.construct_aggregated_pair_results_path(
+#                region_1=r1, region_2=r2,
+#            )
+#            os.makedirs(
+#                os.path.dirname(agg_path), exist_ok=True
+#            )
+#            df.to_csv(agg_path)
+#
+#            logger.processing(
+#                f"Saved pair results for "
+#                f"{r1} vs {r2} ({model})"
+#            )
+
+#def aggregate_ranking_results(
+#    config: Dict[str, Any], analysis_type: str = "rankings"
+#):
+#    """
+#    Ranking aggregation. Creates one CSV per function showing
+#    which region won for each pair.
+#    
+#    Output per function:
+#    - {function}/rankings.csv
+#      Columns: Pair, Region 1, Region 2, Winner
+#    """
+#    for model, _, query, agg, _ in _iter_model_hemispheres(
+#        config, analysis_type,
+#    ):
+#        for function in config.functions:
+#            rows = []
+#            for r1, r2 in config.pairs:
+#                path = query.construct_query_pair_path(
+#                    region_1=r1, region_2=r2,
+#                    trial="final",
+#                )
+#                if not os.path.exists(path):
+#                    continue
+#
+#                with open(path) as f:
+#                    data = json.load(f)
+#
+#                ranking = data.get(function, {}).get(model)
+#                if ranking is None:
+#                    continue
+#
+#                winner = r1 if ranking == 1 else r2
+#                rows.append({
+#                    "Pair": f"{r1}_vs_{r2}",
+#                    "Region 1": r1,
+#                    "Region 2": r2,
+#                    "Winner": winner,
+#                })
+#
+#            if not rows:
+#                continue
+#
+#            # Create one dataframe for the entire function
+#            df = pd.DataFrame(rows).set_index("Pair")
+#            
+#            # Trick to get the root directory by generating a dummy pair path
+#            dummy_path = agg.construct_aggregated_pair_results_path(
+#                region_1="A", region_2="B",
+#            )
+#            root_dir = os.path.dirname(os.path.dirname(dummy_path))
+#            
+#            # Construct the new function-specific path
+#            agg_path = os.path.join(root_dir, function, "rankings.csv")
+#            
+#            os.makedirs(os.path.dirname(agg_path), exist_ok=True)
+#            df.to_csv(agg_path)
+#
+#            logger.processing(
+#                f"Saved ranking results for {function} ({model})"
+#            )
+
 def aggregate_ranking_results(
     config: Dict[str, Any], analysis_type: str = "rankings"
 ):
     """
-    Ranking aggregation. Creates one CSV per pair showing
-    which region won for each function.
-
-    Output per pair:
-    - {region1}_vs_{region2}/results.csv
-      Columns: Function, Winner, Ranking
-
-    Args:
-        * config: Analysis configuration
-        * analysis_type: "rankings"
+    Ranking aggregation. Creates one CSV per function showing
+    which region won for each pair.
+    
+    Output per function:
+    - {function}/rankings.csv
+      Columns: Pair, Region 1, Region 2, Winner
     """
-    for model, _, query, agg, _ in _iter_model_hemispheres(
+    for model, hemisphere, query, agg, _ in _iter_model_hemispheres(
         config, analysis_type,
     ):
-        for r1, r2 in config.pairs:
+        for function in config.functions:
             rows = []
-            for function in config.functions:
+            
+            # Extract unique regions dynamically
+            unique_regions = list(set([r for pair in config.pairs for r in pair]))
+            
+            # Determine pairs based on hemisphere category
+            if hemisphere == "interhemispheric":
+                current_pairs = [(r1, r2) for r1 in unique_regions for r2 in unique_regions]
+            else:
+                current_pairs = list(config.pairs)
+
+            for r1, r2 in current_pairs:
                 path = query.construct_query_pair_path(
                     region_1=r1, region_2=r2,
                     trial="final",
@@ -262,36 +398,53 @@ def aggregate_ranking_results(
                 with open(path) as f:
                     data = json.load(f)
 
-                ranking = (
-                    data.get(function, {}).get(model)
-                )
+                ranking = data.get(function, {}).get(model)
                 if ranking is None:
                     continue
 
-                winner = r1 if ranking == 1 else r2
+                # --- NEW LOGIC: Format display names based on hemisphere ---
+                if hemisphere == "left":
+                    r1_disp, r2_disp = f"left {r1}", f"left {r2}"
+                elif hemisphere == "right":
+                    r1_disp, r2_disp = f"right {r1}", f"right {r2}"
+                elif hemisphere == "interhemispheric":
+                    r1_disp, r2_disp = f"left {r1}", f"right {r2}"
+                else:
+                    # Unseparated (None) fallback
+                    r1_disp, r2_disp = r1, r2
+
+                # Determine winner using the new display names
+                winner_disp = r1_disp if ranking == 1 else r2_disp
+                
                 rows.append({
-                    "Function": function,
-                    "Winner": winner,
+                    "Pair": f"{r1_disp}_vs_{r2_disp}",
+                    "Region 1": r1_disp,
+                    "Region 2": r2_disp,
+                    "Winner": winner_disp,
                 })
 
             if not rows:
                 continue
 
-            df = pd.DataFrame(rows).set_index("Function")
-            agg_path = agg.construct_aggregated_pair_results_path(
-                region_1=r1, region_2=r2,
+            # Create one dataframe for the entire function
+            df = pd.DataFrame(rows).set_index("Pair")
+            
+            # Trick to get the root directory by generating a dummy pair path
+            dummy_path = agg.construct_aggregated_pair_results_path(
+                region_1="A", region_2="B",
             )
-            os.makedirs(
-                os.path.dirname(agg_path), exist_ok=True
-            )
+            root_dir = os.path.dirname(os.path.dirname(dummy_path))
+            
+            # Construct the new function-specific path
+            agg_path = os.path.join(root_dir, function, "rankings.csv")
+            
+            os.makedirs(os.path.dirname(agg_path), exist_ok=True)
             df.to_csv(agg_path)
 
             logger.processing(
-                f"Saved pair results for "
-                f"{r1} vs {r2} ({model})"
+                f"Saved ranking results for {function} ({model})"
             )
-
-
+            
 def aggregate_justifications(
     config: Dict[str, Any], analysis_type: str
 ):
@@ -398,79 +551,160 @@ def aggregate_retest_statistics(
                 )
                 df.to_csv(out)
 
-        elif analysis_type == "query-functions":
-            # Mean + std per region x function
-            rows = []
-            for region in config.regions:
-                path = query.construct_query_retest_summary_path(
-                    region=region,
-                )
-                if not os.path.exists(path):
-                    continue
-                with open(path) as f:
-                    data = json.load(f)
-                if model not in data:
-                    continue
-                row = {"Region": region}
-                funcs = data[model].get("functions", {})
-                for func_name, stats in funcs.items():
-                    row[f"{func_name}_mean"] = (
-                        stats.get("mean")
-                    )
-                    row[f"{func_name}_std"] = (
-                        stats.get("std")
-                    )
-                    row[f"{func_name}_min"] = (
-                        stats.get("min")
-                    )
-                    row[f"{func_name}_max"] = (
-                        stats.get("max")
-                    )
-                rows.append(row)
+#        elif analysis_type == "query-functions":
+#            # Mean + std per region x function
+#            rows = []
+#            for region in config.regions:
+#                path = query.construct_query_retest_summary_path(
+#                    region=region,
+#                )
+#                if not os.path.exists(path):
+#                    continue
+#                with open(path) as f:
+#                    data = json.load(f)
+#                if model not in data:
+#                    continue
+#                row = {"Region": region}
+#                funcs = data[model].get("functions", {})
+#                for func_name, stats in funcs.items():
+#                    row[f"{func_name}_mean"] = (
+#                        stats.get("mean")
+#                    )
+#                    row[f"{func_name}_std"] = (
+#                        stats.get("std")
+#                    )
+#                    row[f"{func_name}_min"] = (
+#                        stats.get("min")
+#                    )
+#                    row[f"{func_name}_max"] = (
+#                        stats.get("max")
+#                    )
+#                rows.append(row)
+#
+#            if rows:
+#                df = pd.DataFrame(rows).set_index("Region")
+#                out = agg.construct_aggregated_retest_stats_path(
+#                    filename="retest_statistics.csv",
+#                )
+#                os.makedirs(
+#                    os.path.dirname(out), exist_ok=True
+#                )
+#                df.to_csv(out)
 
-            if rows:
-                df = pd.DataFrame(rows).set_index("Region")
-                out = agg.construct_aggregated_retest_stats_path(
-                    filename="retest_statistics.csv",
-                )
-                os.makedirs(
-                    os.path.dirname(out), exist_ok=True
-                )
-                df.to_csv(out)
+
+        elif analysis_type == "query-functions":
+            # Mean + std per region, saved into specific function folders
+            for function in config.functions:
+                rows = []
+                for region in config.regions:
+                    path = query.construct_query_retest_summary_path(
+                        region=region,
+                    )
+                    if not os.path.exists(path):
+                        continue
+                    with open(path) as f:
+                        data = json.load(f)
+                    if model not in data:
+                        continue
+                    
+                    # Only pull the stats for the current function in the loop
+                    stats = data[model].get("functions", {}).get(function)
+                    if stats:
+                        rows.append({
+                            "Region": region,
+                            "mean": stats.get("mean"),
+                            "std": stats.get("std"),
+                            "min": stats.get("min"),
+                            "max": stats.get("max")
+                        })
+
+                if rows:
+                    df = pd.DataFrame(rows).set_index("Region")
+                    
+                    # Trick to get the exact folder path where probabilities.csv lives
+                    prob_path = agg.construct_individual_function_prob_path(
+                        function=function
+                    )
+                    out = os.path.join(os.path.dirname(prob_path), "retest_statistics.csv")
+                    
+                    os.makedirs(
+                        os.path.dirname(out), exist_ok=True
+                    )
+                    df.to_csv(out)
+
+#        elif analysis_type == "rankings":
+#            # Agreement ratios per pair x function
+#            rows = []
+#            for r1, r2 in config.pairs:
+#                pair_name = f"{r1}_vs_{r2}"
+#                path = query.construct_query_retest_summary_path(
+#                    region=pair_name,
+#                )
+#                if not os.path.exists(path):
+#                    continue
+#                with open(path) as f:
+#                    data = json.load(f)
+#                if model not in data:
+#                    continue
+#                row = {"Pair": pair_name}
+#                funcs = data[model].get(
+#                    "functions", {}
+#                )
+#                for func_name, stats in funcs.items():
+#                    row[func_name] = stats.get(
+#                        "agreement_ratio"
+#                    )
+#                rows.append(row)
+#
+#            if rows:
+#                df = pd.DataFrame(rows).set_index("Pair")
+#                out = agg.construct_aggregated_retest_stats_path(
+#                    filename="retest_agreement.csv",
+#                )
+#                os.makedirs(
+#                    os.path.dirname(out), exist_ok=True
+#                )
+#                df.to_csv(out)
 
         elif analysis_type == "rankings":
-            # Agreement ratios per pair x function
-            rows = []
-            for r1, r2 in config.pairs:
-                pair_name = f"{r1}_vs_{r2}"
-                path = query.construct_query_retest_summary_path(
-                    region=pair_name,
-                )
-                if not os.path.exists(path):
-                    continue
-                with open(path) as f:
-                    data = json.load(f)
-                if model not in data:
-                    continue
-                row = {"Pair": pair_name}
-                funcs = data[model].get(
-                    "functions", {}
-                )
-                for func_name, stats in funcs.items():
-                    row[func_name] = stats.get(
-                        "agreement_ratio"
+            # Agreement ratios per pair, saved into specific function folders
+            for function in config.functions:
+                rows = []
+                for r1, r2 in config.pairs:
+                    pair_name = f"{r1}_vs_{r2}"
+                    path = query.construct_query_retest_summary_path(
+                        region=pair_name,
                     )
-                rows.append(row)
+                    if not os.path.exists(path):
+                        continue
+                    with open(path) as f:
+                        data = json.load(f)
+                    if model not in data:
+                        continue
+                    
+                    # Only grab the agreement ratio for the current function
+                    stats = data[model].get("functions", {}).get(function)
+                    if stats:
+                        rows.append({
+                            "Pair": pair_name,
+                            "agreement_ratio": stats.get("agreement_ratio")
+                        })
 
-            if rows:
-                df = pd.DataFrame(rows).set_index("Pair")
-                out = agg.construct_aggregated_retest_stats_path(
-                    filename="retest_agreement.csv",
-                )
-                os.makedirs(
-                    os.path.dirname(out), exist_ok=True
-                )
-                df.to_csv(out)
+                if rows:
+                    df = pd.DataFrame(rows).set_index("Pair")
+                    
+                    # Trick to get the root directory using a dummy filename
+                    dummy_out = agg.construct_aggregated_retest_stats_path(
+                        filename="dummy.csv",
+                    )
+                    
+                    # Save to: .../{function}/retest_agreement.csv
+                    out = os.path.join(os.path.dirname(dummy_out), function, "retest_agreement.csv")
+                    
+                    os.makedirs(
+                        os.path.dirname(out), exist_ok=True
+                    )
+                    df.to_csv(out)
 
         logger.processing(
             f"Saved retest statistics for {model}/"

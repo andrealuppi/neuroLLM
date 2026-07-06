@@ -147,9 +147,14 @@ def main():
         )
 
     # Resolve max_tokens default based on --justify
+    # Resolve max_tokens default based on --justify and local models
     if args.max_tokens is None:
-        args.max_tokens = 512 if args.justify else 256
-
+        has_local_model = any(m.strip().startswith("local/") for m in args.models.split(","))
+        if has_local_model:
+            args.max_tokens = 256 if args.justify else 128
+        else:
+            args.max_tokens = 512 if args.justify else 256
+        
     # Initialize API clients
     logger.info("Initializing API clients...")
     try:
@@ -177,7 +182,12 @@ def main():
         models=model_names,
         functions=None,  # Set later for probabilities/rankings
         pairs=None,  # Set later for rankings
-        workers=1 if args.command == "test" else args.workers,
+        workers=(
+            1
+            if args.command == "test"
+            or any(m.startswith("local/") for m in model_names)
+            else args.workers
+        ),
         skip_visualization=args.skip_visualization,
         skip_raw_saving=args.skip_raw_saving,
         atlas_name=args.atlas_name,

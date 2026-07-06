@@ -4,7 +4,7 @@
     {hemisphere_part} **{species}** brain is involved in **
     {function}**.
 
-    These functions should be based on a simulated review of neuroscience
+    These probabilities should be based on a simulated review of neuroscience
     literature, reflecting how frequently these functions are associated with
     this brain region across **peer-reviewed** studies, textbooks, and
     reputable sources.

@@ -18,6 +18,7 @@
     4. **DO NOT** repeat functions in your list.
     5. List out the functions **only** for the specified {hemisphere_part}
     hemisphere.
+    6. You **must** provide **exactly 5** functions.
 
     ### Expected Output Format
     [function_1, function_2, function_3, function_4, function_5]

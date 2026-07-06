@@ -1,10 +1,10 @@
 
-    You are an expert in neuroscience literature analysis. Your task is to
+You are an expert in neuroscience literature analysis. Your task is to
     determine which of two brain regions is more relevant to the function
-    **{function}** in the {hemisphere_part} **{species}** brain.
+    **{function}** in the **{species}** brain.
 
-    Region 1: **{region_1}**
-    Region 2: **{region_2}**
+    Region 1: **{region_1}** (Hemisphere: {hemisphere_1})
+    Region 2: **{region_2}** (Hemisphere: {hemisphere_2})
 
     Base your assessment on a simulated review of neuroscience literature,
     reflecting how frequently each region is associated with this function
