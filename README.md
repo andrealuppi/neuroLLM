@@ -6,15 +6,16 @@ A framework for using Large Language Models to analyze brain region functions ac
 
 This tool provides three primary analysis workflows:
 
-1. **Functions Analysis** (`top-functions`): Identifies the top 5 functions associated with brain regions, embeds them, and creates similarity matrices
-2. **Probabilities Analysis** (`query-functions`): Calculates the probability of specific functions being associated with brain regions
-3. **Rankings Analysis** (`rank-pairs`): Ranks pairs of brain regions by relevance to specific functions
+1. **Region-Function Association Scores** (`query-functions`): Calculates the probability of specific functions being associated with brain regions
+2. **Pairwise Rankings** (`rank-pairs`): Ranks pairs of brain regions by relevance to specific functions
+3. **Function Description** (`top-functions`): Identifies the top 5 functions associated with brain regions, embeds them, and creates similarity matrices
 
 Additional features:
 - **Justification** (`--justify`): Ask the LLM to explain its reasoning alongside its answer (stored in parallel files, does not affect numeric processing)
 - **Retesting** (`--retest X`): Query the LLM multiple times and average the results for reliability analysis (mean for probabilities, mode for rankings, semantic consensus + mean embedding for functions)
 
-All cloud-based LLM queries are routed through [OpenRouter](https://openrouter.ai/), giving you access to hundreds of models (OpenAI, Anthropic, Google, Meta, Mistral, etc.) with a single API key. The framework also supports:
+All cloud-based LLM queries are routed through [OpenRouter](https://openrouter.ai/), giving you access to hundreds of models (OpenAI, Anthropic, Google, Meta, Mistral, Qwen, etc.) with a single API key. 
+The framework also supports:
 - **Local LLMs**: local LLMs can be used, for example using MLX for Apple Silicon (may require quantization)
 - **Dummy**: A mock model for testing without API usage
 
@@ -28,7 +29,7 @@ All cloud-based LLM queries are routed through [OpenRouter](https://openrouter.a
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/Hana-Ali/neuroLLM.git
+   git clone https://github.com/andrealuppi/neuroLLM.git
    cd neuroLLM
    ```
 
@@ -54,16 +55,13 @@ All cloud-based LLM queries are routed through [OpenRouter](https://openrouter.a
    ```
    OPENROUTER_API_KEY=your-openrouter-key-here
    OPENAI_API_KEY=your-openai-key-here           # Only needed for top-functions (embeddings)
-   HF_TOKEN=your-huggingface-token-here          # Only needed for BrainGPT
    ```
 
    | Key | Required? | Purpose | Where to get it |
    |-----|-----------|---------|-----------------|
    | `OPENROUTER_API_KEY` | Yes (for cloud models) | Routes all LLM queries | [openrouter.ai/keys](https://openrouter.ai/keys) |
    | `OPENAI_API_KEY` | Only for `top-functions` with `--embedding-provider openai` (default) | Generates text embeddings via `text-embedding-3-large` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-   | `HF_TOKEN` | Only for BrainGPT | Downloads Llama-2 base model from Hugging Face | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
 
-   > **BrainGPT note:** The base model (`meta-llama/Llama-2-7b-chat-hf`) is gated. You must first request access at [huggingface.co/meta-llama/Llama-2-7b-chat-hf](https://huggingface.co/meta-llama/Llama-2-7b-chat-hf) and wait for approval before your `HF_TOKEN` will work.
 
 ### Atlas Files
 
@@ -111,7 +109,7 @@ Identifies top 5 functions for brain regions and creates similarity matrices:
 python main.py top-functions --atlas-name DesikanKilliany68 --species human
 ```
 
-#### `query-functions` -- Probabilistic Functional Association
+#### `query-functions` -- Region-Function Association Scores
 Calculates probabilities of specific functions being associated with regions:
 
 ```bash
@@ -120,7 +118,7 @@ python main.py query-functions --atlas-name DesikanKilliany68 --species human \
 ```
 
 #### `rank-pairs` -- Pairwise Region Ranking
-Ranks which of two brain regions is more relevant to a specific function:
+Ranks which of two brain regions is more relevant to a specific function (ties not allowed), either for a user-specified pair, or for all possible pairs:
 
 ```bash
 # Rank specific pairs for specific functions
@@ -313,9 +311,31 @@ python main.py rank-pairs --atlas-name DesikanKilliany68 --species human \
   --pairs "cuneus:precuneus" --justify --retest 3
 ```
 
+### Local LLMs
+
+Use of local LLMs is also supported. Using a local LLM can be advantageous to avoid the need for an API key and associated costs, as well as giving users more control without dependence on third-party AI companies. Local models can also be fine-tuned by the user if desired. 
+Note that to run on a personal laptop, many LLMs may need quantization to reduce their size. 
+
+To use a desired local model, create a `config` folder in `neuroLLM`, and within it, create `local_models.json` structured as follows: 
+
+```json
+{
+  "local/mistral_24b": {
+    "backend": "mlx",
+    "path": "mlx-community/Mistral-Small-24B-Instruct-2501-4bit"
+  }
+}
+
+The model is then queried like any other model, in this example `local/mistral_24b`. The designation `local` therefore takes the place of the AI company. The subsequent model name (here, `mistral_24b`) can be arbitrary, but must be unique. 
+
+Support is currently provided for MLX local models for Apple Silicon available from HuggingFace (mlx-community): if the `path` in `local_models.json` refers to an mlx-community model, the corresponding model will be downloaded upon first use, so no separate download is required.
+Users may adapt the same logic with a different backend to work with independently quantized local models. 
+
+
+
 ## Function Groups
 
-Manage sets of related functions in `functions.json`:
+Manage sets of related functions in `functions.json` (some possible examples below):
 
 ```json
 {
@@ -478,6 +498,5 @@ clean_llm_prompting/
 - Verify atlas files exist in correct directory structure
 - Use `--models dummy` for testing without API usage
 - Use `list-models` to verify your OpenRouter API key works and see available models
-- **BrainGPT not loading?** Make sure you've been granted access to `meta-llama/Llama-2-7b-chat-hf` on Hugging Face and that your `HF_TOKEN` has the correct permissions
 - Check that function names in `--functions` match those in literature
 - **Interrupted run?** Re-run the same command -- completed trials are automatically skipped
