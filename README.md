@@ -199,7 +199,7 @@ You can pass one or more model IDs:
 # Multiple models
 --models "openai/gpt-4o-mini,anthropic/claude-3.5-sonnet,google/gemini-2.0-flash-001"
 
-# Local model from HuggingFace `mlx-community' (model ID must be specified in `config/local_models.json' file) 
+# Local model from HuggingFace mlx-community (model ID must be specified in `config/local_models.json' file) 
 --models "local/my_local_model_ID"
 
 # Mix cloud and local
