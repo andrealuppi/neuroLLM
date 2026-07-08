@@ -45,8 +45,6 @@ The framework also supports:
    conda activate llm_neuro
    conda install -c conda-forge pandas numpy matplotlib seaborn scikit-learn
    pip install openai requests python-dotenv
-   # Only needed if using BrainGPT:
-   pip install peft transformers torch
    # Only needed if using local embeddings (--embedding-provider local):
    pip install sentence-transformers
    ```
@@ -145,7 +143,7 @@ python main.py test --atlas-name DesikanKilliany68 --species human
 |--------|-------------|---------|
 | `--species` | Target species: `human`, `macaque`, `mouse` | **Required** |
 | `--atlas-name` | Atlas to use (must exist in `atlases/{species}/`) | Required when `--regions` is not provided |
-| `--models` | Comma-separated OpenRouter model IDs, `braingpt`, or `dummy` | `dummy` |
+| `--models` | Comma-separated OpenRouter model IDs, local model IDs (preceded by `local/`), or `dummy` | `dummy` |
 | `--regions` | Comma-separated brain regions | All regions in atlas |
 | `--separate-hemispheres` | Analyze left and right hemispheres separately | `False` |
 | `--prompt-template-name` | Custom prompt template name | `default` |
@@ -201,11 +199,11 @@ You can pass one or more model IDs:
 # Multiple models
 --models "openai/gpt-4o-mini,anthropic/claude-3.5-sonnet,google/gemini-2.0-flash-001"
 
-# Local BrainGPT model (requires HF_TOKEN)
---models "braingpt"
+# Local model from HuggingFace `mlx-community' (model ID must be specified in `config/local_models.json' file) 
+--models "local/my_local_model_ID"
 
 # Mix cloud and local
---models "openai/gpt-4o-mini,braingpt"
+--models "openai/gpt-4o-mini,local/my_local_model_ID"
 
 # Dummy model for testing (default)
 --models "dummy"
@@ -450,7 +448,7 @@ clean_llm_prompting/
 │
 ├── utils/
 │   ├── brain_analyser.py       # Main analysis orchestrator
-│   ├── api_clients.py          # LLM client management (OpenRouter, BrainGPT, dummy)
+│   ├── api_clients.py          # LLM client management (OpenRouter, local models, dummy)
 │   ├── prompts.py              # Prompt generation & template loading
 │   │
 │   ├── core/                   # Core analysis logic
