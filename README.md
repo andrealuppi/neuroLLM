@@ -327,10 +327,14 @@ To use a desired local model, create a `config` folder in `neuroLLM`, and within
 
 The model is then queried like any other model, in this example `local/mistral_24b` (note that parallel execution is not supported for local models). In the json file, the designation `local` therefore takes the place of the AI company. The subsequent model name (here, `mistral_24b`) can be arbitrary, but must be unique. 
 
-Support is currently provided for MLX local models for Apple Silicon available from HuggingFace (mlx-community): if the `path` in `local_models.json` refers to an mlx-community model, the corresponding model will be downloaded upon first use, so no separate download is required.
+Support is currently provided for MLX local models for Apple Silicon available from HuggingFace (mlx-community): 
 
+```bash
+pip install mlx-lm
+```
+
+If the `path` in `local_models.json` refers to an mlx-community model, the corresponding model will be automatically downloaded upon first use, so no separate download is required (note that local models can be several GB in size).
 Users may adapt the same logic with a different backend to work with independently quantized local models. 
-
 
 
 ## Function Groups
